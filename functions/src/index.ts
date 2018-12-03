@@ -18,7 +18,7 @@ export const eventsUpdate = functions.firestore
                     eventId: snapshot.after.id,
                     title: after['title'],
                     description: after['description'],
-                    image: after['imageUrl']
+                    image: after['imageUrl'] || null
                 }
             }
             await notifyUsers(payload)
@@ -36,7 +36,7 @@ export const adminMessages = functions.firestore.document("unes_messages/{messag
                 identifier: 'service',
                 title: snapshot.data()['title'],
                 message: snapshot.data()['message'],
-                image: snapshot.data()['image']
+                image: snapshot.data()['image'] || null
             }
         }
         await notifyUsers(payload);
@@ -47,8 +47,12 @@ async function notifyUsers(payload: admin.messaging.MessagingPayload) {
     const documents = await admin.firestore().collection("users").get()
     const tokens: string[] = documents.docs
         .map(val => val.data())
-        .filter(val => val['firebaseToken'] !== null)
         .map(val => val['firebaseToken'])
+        .filter(val => val != null)
+        .filter(val => val.length > 0)
+    
+    console.log("> Size: " + tokens.length)
+
     const response = await admin.messaging().sendToDevice(tokens, payload)
     console.log('> Success: ' + response.successCount + '. Failed: ' + response.failureCount)
 }

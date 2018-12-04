@@ -74,6 +74,7 @@ export const migrateAccount = functions.firestore.document("users/{userId}")
                 reminders.docs.map(async(reminder) => {
                     const plain = reminder.data()
                     await database.collection('users').doc(currId).collection('reminders').add(plain)
+                    await reminder.ref.delete()
                 });
 
                 const fileExists = await storage.file('users/' + prevId + '/avatar.jpg').exists()

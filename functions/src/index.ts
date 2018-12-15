@@ -33,22 +33,25 @@ export const eventsUpdate = functions.firestore
 
 export const adminMessages = functions.firestore.document("unes_notify_messages/{messageId}")
     .onCreate(async(snapshot) => {
+        const imageUrl = snapshot.data()['image']
         const payload = {
             data: {
                 identifier: 'service',
                 title: snapshot.data()['title'],
                 message: snapshot.data()['message'],
-                image: snapshot.data()['image'] || null
+                ...imageUrl && { image: imageUrl }
             }
         }
+
+        console.log(payload);
 
         const data = snapshot.data()
         await database.collection("unes_messages").add({
             title: data['title'],
-            message: data['data'],
+            message: data['message'],
             image: data['image'] || null,
             link: data['link'] || 'https://github.com/ForceTower/Melon',
-            createdAt: snapshot.readTime
+            createdAt: data['createdAt']
         })
         await notifyUsers(payload);
         return true;

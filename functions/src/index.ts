@@ -8,6 +8,73 @@ database.settings(settings);
 
 const storage = admin.storage().bucket()
 
+export const findUserId = functions.https.onCall(async(data, context) => {
+    const username = data.username
+    if (!username) {
+        throw new functions.https.HttpsError('failed-precondition', 'Username was not specified')
+    }
+
+    const query = await database.collection('users').where('username', '==', username).limit(1).get()
+    const ids = query.docs.map(it => {
+        return {
+            id: it.id,
+            token: it.data()['firebaseToken']
+        }
+    })
+    return { ids }
+})
+
+export const sendDarkTheme = functions.https.onCall(async(data, context) => {
+    const username = data.username
+
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
+    }
+
+    const uid = context.auth.uid;
+    const me = await database.collection('users').doc(uid).get()
+    const name = me.data()['name']
+    const invites = me.data()['darkInvites']
+    const sentInvites = me.data()['sentDarkInvites']
+
+    if (sentInvites >= invites) {
+        throw new functions.https.HttpsError('failed-precondition', 'You have no invites left');
+    }
+
+    let receiverQuery: FirebaseFirestore.QuerySnapshot
+    if (username) {
+        receiverQuery = await database.collection('users').where('username', '==', username).limit(1).get()
+    } else {
+        receiverQuery = await database.collection('users').where('darkThemeEnabled', '==', false).get()
+    }
+    if (receiverQuery.empty) {
+        throw new functions.https.HttpsError('not-found', `Username ${username} was not found`)
+    }
+
+    let receiver: FirebaseFirestore.QueryDocumentSnapshot
+    if (username) {
+        receiver = receiverQuery.docs[0]
+    } else {
+        const random = Math.floor(Math.random() * receiverQuery.size)
+        receiver = receiverQuery.docs[random]
+    }
+    const token = receiver.data()['firebaseToken']
+    await receiver.ref.set({ darkThemeEnabled: true }, { merge: true })
+    await me.ref.set({ sentDarkInvites: (sentInvites + 1) }, { merge: true })
+    await notifyUser(token, {
+        data: {
+            identifier: 'service',
+            title: 'Você recebeu um presente!',
+            message: `${name} acabou de desbloquear o tema escuro para você`
+        }
+    })
+
+    return {
+        success: true,
+        message: `Dark theme send complete from ${name} to ${username}`
+    }
+});
+
 export const eventsUpdate = functions.firestore
     .document("events/{eventId}")
     .onUpdate(async(snapshot) => {
@@ -62,15 +129,15 @@ export const migrateAccount = functions.firestore.document("users/{userId}")
         const data = snapshot.data()
         const username = data['username']
         const currId = snapshot.id
-        if (username != null) {
+        if (username) {
             const usersQuery = await database.collection('users')
                 .where('username', '==', username)
                 .get()
 
             const users = usersQuery.docs
-                .filter(user => user.id != currId)
+                .filter(value => value.id !== currId)
 
-            if (users != null && users.length > 0) {
+            if (users && users.length > 0) {
                 const prevId = users[0].id
 
                 const reminders = await database.collection('users').doc(prevId).collection('reminders').get()
@@ -249,22 +316,15 @@ export const statsContribution = functions.firestore.document("stats_contributio
     })
 
 async function notifyUsers(payload: admin.messaging.MessagingPayload) {
-    const documents = await admin.firestore().collection("users").get()
-    const tokens: string[] = documents.docs
-        .map(val => val.data())
-        .map(val => val['firebaseToken'])
-        .filter(val => val != null && val.length > 0)
-    
-    console.log("> Size: " + tokens.length)
+    const response = await admin.messaging().sendToTopic('general', payload, {
+        priority: 'high'
+    });
+    console.log(`Success. ${response.messageId}`)
+}
 
-    const size = tokens.length;
-    let iteraction = 1000;
-    let initial = 0;
-    while (iteraction < size) {
-        const part = tokens.slice(initial, iteraction >= size ? size : iteraction);
-        const response = await admin.messaging().sendToDevice(part, payload);
-        console.log('> Success: ' + response.successCount + '. Failed: ' + response.failureCount);
-        initial = iteraction;
-        iteraction += 1000;
-    }
+async function notifyUser(token: string, payload: admin.messaging.MessagingPayload) {
+    const response = await admin.messaging().sendToDevice(token, payload, {
+        priority: 'high'
+    })
+    console.log(`Success. ${response.successCount}`)
 }

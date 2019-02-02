@@ -6,7 +6,13 @@ const database = admin.firestore();
 const settings = { timestampsInSnapshots: true };
 database.settings(settings);
 
+import notifier from './feedback/notifier';
+
 const storage = admin.storage().bucket()
+
+export {
+    notifier
+}
 
 export const findUserId = functions.https.onCall(async(data, context) => {
     const username = data.username
@@ -34,10 +40,11 @@ export const sendDarkTheme = functions.https.onCall(async(data, context) => {
     const uid = context.auth.uid;
     const me = await database.collection('users').doc(uid).get()
     const name = me.data()['name']
-    const invites = me.data()['darkInvites']
-    const sentInvites = me.data()['sentDarkInvites']
+    const invites = me.data()['darkInvites'] || 0
+    const sentInvites = me.data()['sentDarkInvites'] || 0
 
     if (sentInvites >= invites) {
+        console.log(`${name} tried to invite someone and had no invites`)
         throw new functions.https.HttpsError('failed-precondition', 'You have no invites left');
     }
 
@@ -48,6 +55,7 @@ export const sendDarkTheme = functions.https.onCall(async(data, context) => {
         receiverQuery = await database.collection('users').where('darkThemeEnabled', '==', false).get()
     }
     if (receiverQuery.empty) {
+        console.log(`${name} tried to invite an unknown person`)
         throw new functions.https.HttpsError('not-found', `Username ${username} was not found`)
     }
 
@@ -59,6 +67,7 @@ export const sendDarkTheme = functions.https.onCall(async(data, context) => {
         receiver = receiverQuery.docs[random]
     }
     const token = receiver.data()['firebaseToken']
+    const recName = receiver.data()['name']
     await receiver.ref.set({ darkThemeEnabled: true }, { merge: true })
     await me.ref.set({ sentDarkInvites: (sentInvites + 1) }, { merge: true })
     await notifyUser(token, {
@@ -68,6 +77,8 @@ export const sendDarkTheme = functions.https.onCall(async(data, context) => {
             message: `${name} acabou de desbloquear o tema escuro para você`
         }
     })
+
+    console.log(`Dark theme send complete from ${name} to ${recName}`)
 
     return {
         success: true,

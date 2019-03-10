@@ -13,7 +13,7 @@ const notifier = functions.firestore.document("feedback_first/{feedbackId}").onC
         }
     }
 
-    const creator = await database.collection('users').doc('us6JfUEShBPv9dDUrRH35M3J5H93').get()
+    const creator = await database.collection('users').doc('BUiOTtFUO3WqcPQdu1nO4PSmJgt2').get()
     const token = creator.data()['firebaseToken']
     await admin.messaging().sendToDevice(token, payload)
 })

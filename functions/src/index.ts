@@ -150,6 +150,20 @@ export const migrateAccount = functions.firestore.document("users/{userId}")
 
             if (users && users.length > 0) {
                 const prevId = users[0].id
+                const oldData = users[0].data()
+                const {
+                    darkInvites,
+                    darkThemeEnabled,
+                    sentDarkInvites
+                } = oldData
+
+                try {
+                    await snapshot.ref.set({
+                        darkInvites: darkInvites || 0,
+                        darkThemeEnabled: darkThemeEnabled || false,
+                        sentDarkInvites: sentDarkInvites || 0
+                    }, { merge: true })
+                } catch (error) {}
 
                 const reminders = await database.collection('users').doc(prevId).collection('reminders').get()
                 reminders.docs.map(async(reminder) => {

@@ -198,6 +198,19 @@ export const migrateAccount = functions.firestore.document("users/{userId}")
         }
     });
 
+export const updateProfile = functions.firestore.document("users/{userId}")
+    .onUpdate(snapshot => {
+        const after = snapshot.after.data()
+        const before = snapshot.before.data()
+
+        const { darkThemeEnabled: beforeDark } = before
+        const { darkThemeEnabled: afterDark } = after
+        const darkEnabled = beforeDark || afterDark
+
+        snapshot.after.ref.set({ darkThemeEnabled: darkEnabled }, { merge: true })
+        return true
+    });
+
 export const statsContribution = functions.firestore.document("stats_contributions/{userId}")
     .onCreate(async(snapshot) => {
         const data = snapshot.data();

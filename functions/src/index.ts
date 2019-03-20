@@ -37,6 +37,10 @@ export const sendDarkTheme = functions.https.onCall(async(data, context) => {
         throw new functions.https.HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
 
+    if (!username) {
+        throw new functions.https.HttpsError('unimplemented', 'This new version requires a username. Random send has been deprecated')
+    }
+
     const uid = context.auth.uid;
     const me = await database.collection('users').doc(uid).get()
     const name = me.data()['name']

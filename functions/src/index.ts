@@ -14,22 +14,6 @@ export {
     notifier
 }
 
-export const findUserId = functions.https.onCall(async(data, context) => {
-    const username = data.username
-    if (!username) {
-        throw new functions.https.HttpsError('failed-precondition', 'Username was not specified')
-    }
-
-    const query = await database.collection('users').where('username', '==', username).limit(1).get()
-    const ids = query.docs.map(it => {
-        return {
-            id: it.id,
-            token: it.data()['firebaseToken']
-        }
-    })
-    return { ids }
-})
-
 export const sendDarkTheme = functions.https.onCall(async(data, context) => {
     const username = data.username
 
@@ -211,151 +195,11 @@ export const updateProfile = functions.firestore.document("users/{userId}")
         const { darkThemeEnabled: afterDark } = after
         const darkEnabled = beforeDark || afterDark
 
-        snapshot.after.ref.set({ darkThemeEnabled: darkEnabled }, { merge: true })
+        if (beforeDark && !afterDark) {
+            snapshot.after.ref.set({ darkThemeEnabled: darkEnabled }, { merge: true })
+        }
         return true
     });
-
-export const statsContribution = functions.firestore.document("stats_contributions/{userId}")
-    .onCreate(async(snapshot) => {
-        const data = snapshot.data();
-        const disciplines = data['disciplines']
-
-        disciplines.forEach(async(element) => {
-            const code = element['code']
-            const discName = element['disciplineName'].toLowerCase()
-            const teacher = element['teacher'].toLowerCase()
-            const teacherKey = teacher.replace(/\s/g, "")
-            const semester = element['semester']
-            const grade = element['grade']
-
-            const contributorData = {
-                user: snapshot.id
-            }
-
-            const teacherRef = database.collection('stats_teachers').doc(teacherKey)
-            const teacherDoc = await teacherRef.get()
-            let teacherData = {}
-            if (!teacherDoc.exists) {
-                teacherData = {
-                    name: teacher,
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                teacherData = {
-                    average: (teacherDoc.data()['average'] + grade)/2,
-                    total: teacherDoc.data()['total'] + 1
-                }
-            }
-            await teacherRef.set(teacherData)
-            await teacherRef.collection('contributors').doc(snapshot.id).set(contributorData)
-
-            const semesterRef = teacherRef.collection('semesters').doc(semester)
-            const semesterDoc = await semesterRef.get()
-            let semesterData = {};
-            if (!semesterDoc.exists) {
-                semesterData = {
-                    average: grade,
-                    total: 1,
-                }
-            } else {
-                semesterData = {
-                    average: (semesterDoc.data()['average'] + grade)/2,
-                    total: semesterDoc.data()['total'] + 1
-                }
-            }
-            await semesterRef.set(semesterData)
-            await semesterRef.collection('contributors').doc(snapshot.id).set(contributorData);
-
-            const discRef = teacherRef.collection('disciplines').doc(code)
-            const discDoc = await discRef.get()
-            let discData = {}
-            if (!discDoc.exists) {
-                discData = {
-                    name: discName,
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                discData = {
-                    average: (discDoc.data()['average'] + grade)/2,
-                    total: discDoc.data()['total'] + 1
-                }
-            }
-            await discRef.set(discData)
-            await discRef.collection('contributors').doc(snapshot.id).set(contributorData);
-
-            const discStRef = database.collection('stats_disciplines').doc(code)
-            const discStatDoc = await discStRef.get()
-            let discStatData = {}
-            if (!discStatDoc.exists) {
-                discStatData = {
-                    name: discName,
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                discStatData = {
-                    average: (discStatDoc.data()['average'] + grade)/2,
-                    total: discStatDoc.data()['total'] + 1
-                }
-            }
-            await discStRef.set(discStatData)
-            await discStRef.collection('contributors').doc(snapshot.id).set(contributorData);
-
-            const discStTchRef = discStRef.collection('teachers').doc(teacherKey)
-            const discStTchDoc = await discStTchRef.get()
-            let discStTchData = {}
-            if (!discStTchDoc.exists) {
-                discStTchData = {
-                    name: teacher,
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                discStTchData = {
-                    average: (discStTchDoc.data()['average'] + grade)/2,
-                    total: discStTchDoc.data()['total'] + 1
-                }
-            }
-            await discStTchRef.set(discStTchData)
-            await discStTchRef.collection('contributors').doc(snapshot.id).set(contributorData);
-
-            const discStTchSmtRef = discStTchRef.collection('semester').doc(semester)
-            const discStTchSmtDoc = await discStTchSmtRef.get()
-            let discStTchSmtData = {}
-            if (!discStTchSmtDoc.exists) {
-                discStTchSmtData = {
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                discStTchSmtData = {
-                    average: (discStTchSmtDoc.data()['average'] + grade)/2,
-                    total: discStTchSmtDoc.data()['total'] + 1
-                }
-            }
-            await discStTchSmtRef.set(discStTchSmtData)
-            await discStTchSmtRef.collection('contributors').doc(snapshot.id).set(contributorData);
-
-            const discStSmtRef = discStRef.collection('semester').doc(semester)
-            const discStSmtDoc = await discStSmtRef.get()
-            let discStSmtData = {}
-            if (!discStSmtDoc.exists) {
-                discStSmtData = {
-                    average: grade,
-                    total: 1
-                }
-            } else {
-                discStSmtData = {
-                    average: (discStSmtDoc.data()['average'] + grade)/2,
-                    total: discStSmtDoc.data()['total'] + 1
-                }
-            }
-            await discStSmtRef.set(discStSmtData)
-            await discStSmtRef.collection('contributors').doc(snapshot.id).set(contributorData);
-        });
-    })
 
 async function notifyUsers(payload: admin.messaging.MessagingPayload) {
     const response = await admin.messaging().sendToTopic('general', payload, {
@@ -369,4 +213,12 @@ async function notifyUser(token: string, payload: admin.messaging.MessagingPaylo
         priority: 'high'
     })
     console.log(`Success. ${response.successCount}`)
+}
+
+async function createNotifyMessage(payload: any) {
+    try {
+        await database.collection('unes_notify_messages').add(payload)
+    } catch (err) {
+        console.error(err)
+    }
 }

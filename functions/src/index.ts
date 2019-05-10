@@ -99,25 +99,31 @@ export const eventsUpdate = functions.firestore
 
 export const adminMessages = functions.firestore.document("unes_notify_messages/{messageId}")
     .onCreate(async(snapshot) => {
-        const imageUrl = snapshot.data()['image']
+        const data = snapshot.data()
+        const imageUrl = data['image'] || null
+        const institution = data['institution'] || null
         const payload = {
             data: {
                 identifier: 'service',
-                title: snapshot.data()['title'],
-                message: snapshot.data()['message'],
-                ...imageUrl && { image: imageUrl }
+                title: data['title'],
+                message: data['message'],
             }
         }
 
-        console.log(payload);
+        if (imageUrl) {
+            payload.data['image'] = imageUrl
+        }
+        if (institution) {
+            payload.data['institution'] = institution
+        }
 
-        const data = snapshot.data()
         await database.collection("unes_messages").add({
             title: data['title'],
             message: data['message'],
             image: data['image'] || null,
             link: data['link'] || 'https://github.com/ForceTower/Melon',
-            createdAt: data['createdAt']
+            createdAt: data['createdAt'],
+            institution: data['institution']
         })
         await notifyUsers(payload);
         return true;
@@ -201,8 +207,8 @@ export const updateProfile = functions.firestore.document("users/{userId}")
         return true
     });
 
-async function notifyUsers(payload: admin.messaging.MessagingPayload) {
-    const response = await admin.messaging().sendToTopic('general', payload, {
+async function notifyUsers(payload: admin.messaging.MessagingPayload, topic: string = 'general') {
+    const response = await admin.messaging().sendToTopic(topic, payload, {
         priority: 'high'
     });
     console.log(`Success. ${response.messageId}`)

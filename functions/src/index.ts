@@ -7,11 +7,13 @@ const settings = { timestampsInSnapshots: true };
 database.settings(settings);
 
 import notifier from './feedback/notifier';
+import laboratory from './laboratory/auto'
 
 const storage = admin.storage().bucket()
 
 export {
-    notifier
+    notifier,
+    laboratory
 }
 
 export const sendDarkTheme = functions.https.onCall(async(data, context) => {
